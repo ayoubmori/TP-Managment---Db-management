@@ -124,3 +124,59 @@ class SchoolDB:
             print(f"⚠️ Student {etudiant_id} is already marked for this session.")
         except Exception as e:
             print(f"❌ Error marking presence: {e}")
+            
+            
+    def get_tps_for_student(self, groupe_id):
+        """
+        Retrieves list of active TPs for a specific group.
+        """
+        cursor = self.conn.cursor()
+        sql = """
+        SELECT TP.TPID, TP.Titre, TP.Description, TP.DateLimite, M.NomModule 
+        FROM TP
+        JOIN Module M ON TP.ModuleID = M.ModuleID
+        WHERE TP.GroupeID = ?
+        ORDER BY TP.DateLimite DESC
+        """
+        cursor.execute(sql, (groupe_id,))
+        results = cursor.fetchall()
+        
+        tps = []
+        for row in results:
+            tps.append({
+                "id": row.TPID,
+                "titre": row.Titre,
+                "description": row.Description,
+                "deadline": str(row.DateLimite),
+                "module": row.NomModule
+            })
+        return tps
+
+    def get_tp_file_path(self, tp_id):
+        """
+        Gets the local server path for a TP file so we can send it to the student.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT CheminFichier FROM TP WHERE TPID = ?", (tp_id,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        return None
+
+    def submit_rapport(self, tp_id, etudiant_id, rapport_link):
+        """
+        Submits a Drive Link for a specific TP.
+        """
+        cursor = self.conn.cursor()
+        try:
+            sql = """
+            INSERT INTO Soumission (TPID, EtudiantID, LienRapport, DateSoumission) 
+            VALUES (?, ?, ?, GETDATE())
+            """
+            cursor.execute(sql, (tp_id, etudiant_id, rapport_link))
+            self.conn.commit()
+            print(f"✅ Rapport Link submitted for Student {etudiant_id} on TP {tp_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Error submitting rapport: {e}")
+            return False

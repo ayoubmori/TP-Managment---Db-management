@@ -12,3 +12,7 @@ __pycache__/
 # Virtual Environments
 venv/
 env/
+
+
+# copied content files 
+project_contents.txt

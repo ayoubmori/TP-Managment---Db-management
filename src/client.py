@@ -1,66 +1,213 @@
-import socket
-import json
-import time
+import pyodbc
+import os
+from dotenv import load_dotenv
 
-# CONFIGURATION
-# If testing on the SAME machine, use 'localhost'.
-# If testing on TWO machines, put Machine A's IP here (e.g., '192.168.1.15')
-SERVER_IP = 'localhost' 
-PORT = 5000
+# Load environment variables from the .env file
+load_dotenv()
 
-def send_request(action, payload):
-    """
-    Helper function to send JSON and get JSON back.
-    """
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        client.connect((SERVER_IP, PORT))
+class SchoolDB:
+    def __init__(self):
+        # 1. Get values from .env
+        driver = os.getenv('DB_DRIVER', '{ODBC Driver 17 for SQL Server}')
+        server = os.getenv('DB_SERVER', 'localhost')
+        database = os.getenv('DB_DATABASE', 'SchoolManagementDB')
+        trusted_conn = os.getenv('DB_TRUSTED_CONNECTION', 'yes')
+        trust_cert = os.getenv('DB_TRUST_CERT', 'yes')
         
-        # Merge action into payload
-        request = payload.copy()
-        request['action'] = action
-        
-        # Send
-        client.send(json.dumps(request).encode('utf-8'))
-        
-        # Receive
-        response_data = client.recv(4096).decode('utf-8')
-        return json.loads(response_data)
-        
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        client.close()
+        user = os.getenv('DB_USER')
+        password = os.getenv('DB_PASSWORD')
 
-def main():
-    print("--- 📱 FORMATEUR APP (CLIENT) ---")
+        # 2. Build Connection String dynamically
+        self.conn_str = (
+            f"DRIVER={driver};"
+            f"SERVER={server};"
+            f"DATABASE={database};"
+            f"TrustServerCertificate={trust_cert};"
+        )
+
+        if trusted_conn.lower() == 'yes':
+            self.conn_str += "Trusted_Connection=yes;"
+        else:
+            self.conn_str += f"UID={user};PWD={password};"
+
+        self.conn = None
+
+    def connect(self):
+        try:
+            self.conn = pyodbc.connect(self.conn_str)
+            print("✅ Connected to Database Successfully")
+        except Exception as e:
+            print(f"❌ Connection Failed: {e}")
+            print("👉 Check your .env file settings.")
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+
+    # ==========================================================
+    # 1. ADMIN TASKS
+    # ==========================================================
     
-    # SCENARIO: Formateur logs in and sees Seance #1
-    seance_id = 1
-    print(f"\n[1] Requesting Student List for Seance {seance_id}...")
-    
-    response = send_request("GET_STUDENTS", {"seance_id": seance_id})
-    
-    if response['status'] == 'success':
-        students = response['data']
-        print(f"✅ Received {len(students)} students from Server:")
-        for s in students:
-            print(f"   - {s['name']} (ID: {s['id']})")
-            
-        # SCENARIO: Mark the first student as Present
-        if students:
-            target_student = students[0]
-            print(f"\n[2] Sending Presence for {target_student['name']}...")
-            
-            res_presence = send_request("MARK_PRESENCE", {
-                "seance_id": seance_id,
-                "etudiant_id": target_student['id'],
-                "status": "Present"
+    def add_student(self, nom, prenom, email, password, cne, groupe_id, dob):
+        cursor = self.conn.cursor()
+        try:
+            sql_user = "INSERT INTO Utilisateur (Nom, Prenom, Email, MotDePasse, Role) VALUES (?, ?, ?, ?, 'Etudiant');"
+            cursor.execute(sql_user, (nom, prenom, email, password))
+            cursor.execute("SELECT @@IDENTITY")
+            user_id = cursor.fetchone()[0]
+
+            sql_student = "INSERT INTO Etudiant (EtudiantID, CNE, GroupeID, DateNaissance) VALUES (?, ?, ?, ?);"
+            cursor.execute(sql_student, (user_id, cne, groupe_id, dob))
+
+            self.conn.commit()
+            print(f"✅ Student {nom} {prenom} created with ID {user_id}")
+            return user_id
+        except Exception as e:
+            self.conn.rollback()
+            print(f"❌ Error adding student: {e}")
+            return None
+
+    def create_seance(self, date_debut, date_fin, salle, module_id, formateur_email, groupe_id):
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT UserID FROM Utilisateur WHERE Email = ?", (formateur_email,))
+            row = cursor.fetchone()
+            if not row:
+                print("❌ Formateur email not found.")
+                return False
+            formateur_id = row[0]
+
+            sql = """
+            INSERT INTO Seance (DateDebut, DateFin, Salle, ModuleID, FormateurID, GroupeID)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(sql, (date_debut, date_fin, salle, module_id, formateur_id, groupe_id))
+            self.conn.commit()
+            print("✅ Seance scheduled successfully.")
+            return True
+        except Exception as e:
+            print(f"❌ Error creating seance: {e}")
+            return False
+
+    # ==========================================================
+    # 2. SERVER TASKS
+    # ==========================================================
+
+    def get_students_for_seance(self, seance_id):
+        cursor = self.conn.cursor()
+        sql = """
+        SELECT U.UserID, U.Nom, U.Prenom, E.CNE 
+        FROM Etudiant E
+        JOIN Utilisateur U ON E.EtudiantID = U.UserID
+        WHERE E.GroupeID = (SELECT GroupeID FROM Seance WHERE SeanceID = ?)
+        """
+        cursor.execute(sql, (seance_id,))
+        results = cursor.fetchall()
+        
+        students = []
+        for row in results:
+            students.append({
+                "id": row.UserID,
+                "name": f"{row.Nom} {row.Prenom}",
+                "cne": row.CNE
             })
-            print(f"Server Replied: {res_presence['message']}")
-            
-    else:
-        print(f"❌ Error from Server: {response.get('message')}")
+        return students
 
-if __name__ == "__main__":
-    main()
+    def mark_presence(self, seance_id, etudiant_id, status):
+        cursor = self.conn.cursor()
+        try:
+            # Upsert Logic: Update if exists, Insert if not
+            sql_update = "UPDATE Presence SET Etat = ?, DateEnregistrement = GETDATE() WHERE SeanceID = ? AND EtudiantID = ?"
+            cursor.execute(sql_update, (status, seance_id, etudiant_id))
+            
+            if cursor.rowcount == 0:
+                sql_insert = "INSERT INTO Presence (SeanceID, EtudiantID, Etat) VALUES (?, ?, ?)"
+                cursor.execute(sql_insert, (seance_id, etudiant_id, status))
+                print(f"✅ Presence ADDED for Student {etudiant_id}")
+            else:
+                print(f"🔄 Presence UPDATED for Student {etudiant_id}")
+
+            self.conn.commit()
+        except Exception as e:
+            print(f"❌ Error marking presence: {e}")
+
+    # ==========================================================
+    # 3. CLASSROOM TASKS (Formateur)
+    # ==========================================================
+
+    def create_annonce(self, titre, contenu, formateur_id, groupe_id):
+        cursor = self.conn.cursor()
+        try:
+            sql = "INSERT INTO Annonce (Titre, Contenu, FormateurID, GroupeID) VALUES (?, ?, ?, ?)"
+            cursor.execute(sql, (titre, contenu, formateur_id, groupe_id))
+            self.conn.commit()
+            print(f"📢 Annonce '{titre}' posted.")
+            return True
+        except Exception as e:
+            print(f"❌ Error posting annonce: {e}")
+            return False
+
+    def create_tp(self, titre, description, file_path, deadline, module_id, formateur_id, groupe_id):
+        cursor = self.conn.cursor()
+        try:
+            sql = """
+            INSERT INTO TP (Titre, Description, CheminFichier, DateLimite, ModuleID, FormateurID, GroupeID) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(sql, (titre, description, file_path, deadline, module_id, formateur_id, groupe_id))
+            self.conn.commit()
+            print(f"fyp TP '{titre}' assigned.")
+            return True
+        except Exception as e:
+            print(f"❌ Error creating TP: {e}")
+            return False
+
+    # ==========================================================
+    # 4. STUDENT TASKS (Student)
+    # ==========================================================
+
+    def get_tps_for_student(self, groupe_id):
+        cursor = self.conn.cursor()
+        sql = """
+        SELECT TP.TPID, TP.Titre, TP.Description, TP.DateLimite, M.NomModule 
+        FROM TP
+        JOIN Module M ON TP.ModuleID = M.ModuleID
+        WHERE TP.GroupeID = ?
+        ORDER BY TP.DateLimite DESC
+        """
+        cursor.execute(sql, (groupe_id,))
+        results = cursor.fetchall()
+        
+        tps = []
+        for row in results:
+            tps.append({
+                "id": row.TPID,
+                "titre": row.Titre,
+                "description": row.Description,
+                "deadline": str(row.DateLimite),
+                "module": row.NomModule
+            })
+        return tps
+
+    def get_tp_file_path(self, tp_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT CheminFichier FROM TP WHERE TPID = ?", (tp_id,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        return None
+
+    def submit_rapport(self, tp_id, etudiant_id, rapport_link):
+        cursor = self.conn.cursor()
+        try:
+            sql = """
+            INSERT INTO Soumission (TPID, EtudiantID, LienRapport, DateSoumission) 
+            VALUES (?, ?, ?, GETDATE())
+            """
+            cursor.execute(sql, (tp_id, etudiant_id, rapport_link))
+            self.conn.commit()
+            print(f"✅ Rapport Link submitted for Student {etudiant_id} on TP {tp_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Error submitting rapport: {e}")
+            return False
