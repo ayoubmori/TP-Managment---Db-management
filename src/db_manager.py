@@ -625,14 +625,9 @@ class SchoolDB:
         where_sql = "AND S.FormateurID = ?" if formateur_id else ""
         params = (formateur_id,) if formateur_id else ()
 
-        # Fetch RAW absence records (Who, Where, When)
         sql = f"""
         SELECT 
-            U.Nom, U.Prenom, 
-            E.CNE,
-            G.NomGroupe, 
-            M.NomModule, 
-            S.DateDebut
+            U.Nom, U.Prenom, E.CNE, G.NomGroupe, M.NomModule, S.DateDebut
         FROM Presence P
         JOIN Seance S ON P.SeanceID = S.SeanceID
         JOIN Etudiant E ON P.EtudiantID = E.EtudiantID
@@ -643,15 +638,10 @@ class SchoolDB:
         ORDER BY U.Nom, M.NomModule, S.DateDebut DESC
         """
         cursor.execute(sql, params)
-        rows = cursor.fetchall()
         
-        # Process in Python to group dates
         report_map = {}
-        
-        for r in rows:
-            # Create a unique key for (Student + Module)
+        for r in cursor.fetchall():
             key = f"{r.CNE}-{r.NomModule}"
-            
             if key not in report_map:
                 report_map[key] = {
                     "name": f"{r.Nom} {r.Prenom}",
@@ -661,73 +651,114 @@ class SchoolDB:
                     "count": 0,
                     "dates": []
                 }
-            
-            # Format: "25 Nov 08:00"
-            formatted_date = r.DateDebut.strftime("%d %b %H:%M")
             report_map[key]["count"] += 1
-            report_map[key]["dates"].append(formatted_date)
+            report_map[key]["dates"].append(r.DateDebut.strftime("%d %b %H:%M"))
             
-        # Sort by highest absences
         final_report = list(report_map.values())
         final_report.sort(key=lambda x: x['count'], reverse=True)
-        
         return final_report
 
 
-def create_annonce(self, titre, contenu, image_bytes, formateur_id, groupe_id, module_id):
-    cursor = self.conn.cursor()
-    try:
-        sql = """
-        INSERT INTO Annonce (Titre, Contenu, ImageBin, FormateurID, GroupeID, ModuleID, DatePublication)
-        VALUES (?, ?, ?, ?, ?, ?, GETDATE())
-        """
-        # Handle optional image
-        img_data = pyodbc.Binary(image_bytes) if image_bytes else None
-        
-        cursor.execute(sql, (titre, contenu, img_data, formateur_id, groupe_id, module_id))
-        self.conn.commit()
-        return True
-    except Exception as e:
-        print(f"Error creating annonce: {e}")
-        return False
+    def create_annonce(self, titre, contenu, image_bytes, formateur_id, groupe_id, module_id):
+        cursor = self.conn.cursor()
+        try:
+            sql = """
+            INSERT INTO Annonce (Titre, Contenu, ImageBin, FormateurID, GroupeID, ModuleID, DatePublication)
+            VALUES (?, ?, ?, ?, ?, ?, GETDATE())
+            """
+            # Handle optional image
+            img_data = pyodbc.Binary(image_bytes) if image_bytes else None
+            
+            cursor.execute(sql, (titre, contenu, img_data, formateur_id, groupe_id, module_id))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error creating annonce: {e}")
+            return False
 
-def get_formateur_history_mixed(self, formateur_id):
-    """
-    Fetches BOTH TPs and Announcements, sorts them by date, and labels them.
-    """
-    cursor = self.conn.cursor()
-    
-    # 1. Get TPs
-    sql_tp = """
-    SELECT TPID as ID, Titre, DateLimite as DateItem, 'TP' as Type, G.NomGroupe, M.NomModule
-    FROM TP 
-    JOIN Groupe G ON TP.GroupeID = G.GroupeID
-    JOIN Module M ON TP.ModuleID = M.ModuleID
-    WHERE FormateurID = ?
-    """
-    
-    # 2. Get Announcements
-    sql_ann = """
-    SELECT AnnonceID as ID, Titre, DatePublication as DateItem, 'Annonce' as Type, G.NomGroupe, M.NomModule
-    FROM Annonce 
-    JOIN Groupe G ON Annonce.GroupeID = G.GroupeID
-    JOIN Module M ON Annonce.ModuleID = M.ModuleID
-    WHERE FormateurID = ?
-    """
-    
-    # Union them to get a single timeline
-    final_sql = f"{sql_tp} UNION ALL {sql_ann} ORDER BY DateItem DESC"
-    
-    cursor.execute(final_sql, (formateur_id, formateur_id))
-    
-    return [
-        {
-            "id": r.ID, 
-            "title": r.Titre, 
-            "date": str(r.DateItem)[:16], 
-            "type": r.Type,
-            "group": r.NomGroupe,
-            "module": r.NomModule
-        } 
-        for r in cursor.fetchall()
-    ]
+    def get_formateur_history_mixed(self, formateur_id):
+        """
+        Fetches BOTH TPs and Announcements, sorts them by date, and labels them.
+        """
+        cursor = self.conn.cursor()
+        
+        # 1. Get TPs
+        sql_tp = """
+        SELECT TPID as ID, Titre, DateLimite as DateItem, 'TP' as Type, G.NomGroupe, M.NomModule
+        FROM TP 
+        JOIN Groupe G ON TP.GroupeID = G.GroupeID
+        JOIN Module M ON TP.ModuleID = M.ModuleID
+        WHERE FormateurID = ?
+        """
+        
+        # 2. Get Announcements
+        sql_ann = """
+        SELECT AnnonceID as ID, Titre, DatePublication as DateItem, 'Annonce' as Type, G.NomGroupe, M.NomModule
+        FROM Annonce 
+        JOIN Groupe G ON Annonce.GroupeID = G.GroupeID
+        JOIN Module M ON Annonce.ModuleID = M.ModuleID
+        WHERE FormateurID = ?
+        """
+        
+        # Union them to get a single timeline
+        final_sql = f"{sql_tp} UNION ALL {sql_ann} ORDER BY DateItem DESC"
+        
+        cursor.execute(final_sql, (formateur_id, formateur_id))
+        
+        return [
+            {
+                "id": r.ID, 
+                "title": r.Titre, 
+                "date": str(r.DateItem)[:16], 
+                "type": r.Type,
+                "group": r.NomGroupe,
+                "module": r.NomModule
+            } 
+            for r in cursor.fetchall()
+        ]
+        
+        
+    # --- GRADING SYSTEM ---
+
+    def get_submissions_for_tp(self, tp_id):
+        """ Returns list of students who submitted work for a specific TP """
+        cursor = self.conn.cursor()
+        sql = """
+        SELECT S.SoumissionID, U.Nom, U.Prenom, S.DateSoumission, S.Note, S.FichierNom
+        FROM Soumission S
+        JOIN Etudiant E ON S.EtudiantID = E.EtudiantID
+        JOIN Utilisateur U ON E.EtudiantID = U.UserID
+        WHERE S.TPID = ?
+        ORDER BY U.Nom
+        """
+        cursor.execute(sql, (tp_id,))
+        return [
+            {
+                "id": r.SoumissionID,
+                "student": f"{r.Nom} {r.Prenom}",
+                "date": r.DateSoumission.strftime("%d %b %H:%M"),
+                "grade": r.Note if r.Note is not None else "",
+                "file_name": r.FichierNom
+            }
+            for r in cursor.fetchall()
+        ]
+
+    def get_submission_file(self, submission_id):
+        """ Downloads the student's report file """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT FichierData, FichierNom, FichierType FROM Soumission WHERE SoumissionID=?", (submission_id,))
+        row = cursor.fetchone()
+        if row:
+            return {"data": row.FichierData, "name": row.FichierNom, "type": row.FichierType}
+        return None
+
+    def save_grade(self, submission_id, grade):
+        """ Updates the grade for a student submission """
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("UPDATE Soumission SET Note = ? WHERE SoumissionID = ?", (grade, submission_id))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error saving grade: {e}")
+            return False

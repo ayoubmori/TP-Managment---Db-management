@@ -213,7 +213,7 @@
                                     <th class="ps-4">Title</th>
                                     <th>Target</th>
                                     <th>Date</th>
-                                    <th class="text-end pe-4">Type</th>
+                                    <th class="text-end pe-4">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -228,7 +228,13 @@
                                         <td class="small text-muted">{{ item.date }}</td>
                                         <td class="text-end pe-4">
                                             {% if item.type == 'TP' %}
-                                                <span class="badge bg-primary">TP File</span>
+                                                <button onclick="viewFile({{ item.id }})" class="btn btn-sm btn-outline-primary me-1" title="View My File">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button onclick="openGradingModal({{ item.id }}, '{{ item.title }}')" class="btn btn-sm btn-outline-success me-1">
+                                                    <i class="fas fa-check-circle"></i> Grade
+                                                </button>
+                                                <span class="badge bg-primary">TP</span>
                                             {% else %}
                                                 <span class="badge bg-warning text-dark">News</span>
                                             {% endif %}
@@ -260,6 +266,14 @@
                                             <p class="mb-1"><span class="badge bg-secondary">{{ item.module }}</span></p>
                                             <p class="mb-2"><span class="badge bg-info text-dark">{{ item.group }}</span></p>
                                             <hr class="my-2">
+                                            
+                                            {% if item.type == 'TP' %}
+                                            <div class="d-flex gap-2 mb-2">
+                                                <button onclick="viewFile({{ item.id }})" class="btn btn-sm btn-outline-primary w-50">View</button>
+                                                <button onclick="openGradingModal({{ item.id }}, '{{ item.title }}')" class="btn btn-sm btn-outline-success w-50">Grade</button>
+                                            </div>
+                                            {% endif %}
+                                            
                                             <small class="text-muted"><i class="far fa-clock me-1"></i> {{ item.date }}</small>
                                         </div>
                                     </div>
@@ -270,6 +284,30 @@
                             {% endif %}
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="gradingModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-tasks me-2"></i>Grade: <span id="gradingTpTitle"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr><th>Student</th><th>Date</th><th>Report</th><th>Grade (0-20)</th></tr>
+                        </thead>
+                        <tbody id="gradingTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="gradingLoader" class="text-center py-3" style="display:none;">
+                    <div class="spinner-border text-success"></div>
                 </div>
             </div>
         </div>
@@ -475,6 +513,93 @@
             btn.innerHTML = originalText;
             btn.disabled = false;
         });
+    }
+
+
+    // --- GRADING LOGIC ---
+    const gradingModal = new bootstrap.Modal(document.getElementById('gradingModal'));
+
+    function openGradingModal(tpId, title) {
+        document.getElementById('gradingTpTitle').innerText = title;
+        document.getElementById('gradingLoader').style.display = 'block';
+        document.getElementById('gradingTableBody').innerHTML = '';
+        gradingModal.show();
+
+        fetch(`/api/submissions/${tpId}`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('gradingLoader').style.display = 'none';
+            const tbody = document.getElementById('gradingTableBody');
+            
+            if(data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No submissions yet.</td></tr>';
+                return;
+            }
+
+            data.forEach(sub => {
+                const row = `
+                <tr>
+                    <td class="fw-bold">${sub.student}</td>
+                    <td class="small text-muted">${sub.date}</td>
+                    <td>
+                        <a href="/download_report/${sub.id}" class="btn btn-sm btn-outline-dark" title="${sub.file_name}">
+                            <i class="fas fa-download"></i> Download
+                        </a>
+                    </td>
+                    <td>
+                        <div class="input-group input-group-sm" style="width: 120px;">
+                            <input type="number" class="form-control" value="${sub.grade}" min="0" max="20" id="grade-${sub.id}">
+                            <button class="btn btn-success" onclick="saveGrade(${sub.id})"><i class="fas fa-save"></i></button>
+                        </div>
+                    </td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        });
+    }
+
+    function saveGrade(subId) {
+        const val = document.getElementById(`grade-${subId}`).value;
+        fetch('/api/grade_submission', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ submission_id: subId, grade: val })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if(data.status === 'success') {
+                // Visual feedback
+                const btn = document.querySelector(`#grade-${subId}`).nextElementSibling;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-dark');
+                setTimeout(() => {
+                    btn.classList.add('btn-success');
+                    btn.classList.remove('btn-dark');
+                }, 1000);
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+
+
+    // --- IDM BYPASS: VIEW FILE ---
+    function viewFile(tpId) {
+        document.body.style.cursor = 'wait'; 
+        fetch(`/view_subject/${tpId}`)
+            .then(response => {
+                if (!response.ok) throw new Error("File not found or server error.");
+                return response.blob(); 
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+            })
+            .catch(err => alert("Error opening file: " + err))
+            .finally(() => {
+                document.body.style.cursor = 'default';
+            });
     }
 </script>
 

@@ -107,9 +107,11 @@
                             <td><small class="text-muted">{{ tp.description[:50] }}...</small></td>
                             <td class="text-danger">{{ tp.deadline }}</td>
                             <td class="text-end">
-                                <a href="/view_subject/{{ tp.id }}" target="_blank" class="btn btn-sm btn-outline-primary" title="View Subject">
-                                    <i class="fas fa-eye"></i>
-                                </a>
+                                <button onclick="viewFile({{ tp.id }})" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-eye me-1"></i> View Subject
+                                </button>
+
+                            
                                 <button onclick="openSubmitModal({{ tp.id }})" class="btn btn-sm btn-success" title="Submit Rapport">
                                     <i class="fas fa-file-upload"></i>
                                 </button>
@@ -236,6 +238,35 @@
             btn.innerHTML = originalText;
             btn.disabled = false;
         });
+    }
+
+
+    // --- IDM BYPASS: VIEW FILE ---
+    function viewFile(tpId) {
+        // visual feedback (optional)
+        document.body.style.cursor = 'wait'; 
+
+        fetch(`/view_subject/${tpId}`)
+            .then(response => {
+                if (!response.ok) throw new Error("File not found or server error.");
+                return response.blob(); // Get data as binary blob
+            })
+            .then(blob => {
+                // Create a fake local URL pointing to the memory data
+                // It looks like: blob:http://localhost:5000/123-456...
+                const url = window.URL.createObjectURL(blob);
+                
+                // Open this internal URL in a new tab
+                // IDM ignores "blob:" URLs because they aren't real network links
+                window.open(url, '_blank');
+                
+                // Clean up memory after a minute
+                setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+            })
+            .catch(err => alert("Error opening file: " + err))
+            .finally(() => {
+                document.body.style.cursor = 'default';
+            });
     }
 </script>
 

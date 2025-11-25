@@ -1,14 +1,16 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, send_file
 from db_manager import SchoolDB
-import functools
-import io # Needed for byte stream
-import os
 from dotenv import load_dotenv
+import functools
+import io 
+import mimetypes
 
-load_dotenv() # Ensure .env is loaded
-
+# 1. Secure Configuration
+load_dotenv()
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'fallback_secret_key')
+# Use a real secret key from .env, or a fallback for dev
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_change_in_prod')
 
 # --- AUTH DECORATOR ---
 def login_required(role=None):
@@ -252,10 +254,20 @@ def view_subject(tp_id):
         file_info = db.get_tp_file_content(tp_id)
 
     if file_info and file_info['data']:
+        # 1. Determine Mime Type (Database vs Guess)
+        # If DB has generic 'application/octet-stream', try to guess from filename
+        content_type = file_info['type']
+        if not content_type or 'octet-stream' in content_type:
+            content_type, _ = mimetypes.guess_type(file_info['name'])
+        
+        # Fallback if guess fails
+        if not content_type:
+            content_type = 'application/pdf' if file_info['name'].endswith('.pdf') else 'text/plain'
+
         return send_file(
             io.BytesIO(file_info['data']),
-            mimetype=file_info['type'],
-            as_attachment=False,
+            mimetype=content_type,
+            as_attachment=False, # False = Show in Browser (Inline)
             download_name=file_info['name']
         )
     return "File not found", 404
@@ -390,6 +402,46 @@ def publish_annonce():
     else:
         return jsonify({'status': 'error', 'message': 'Database error'})
 
+
+# --- GRADING ROUTES (NEW) ---
+
+@app.route('/api/submissions/<int:tp_id>')
+@login_required('Formateur')
+def get_tp_submissions(tp_id):
+    with SchoolDB() as db:
+        submissions = db.get_submissions_for_tp(tp_id)
+    return jsonify(submissions)
+
+@app.route('/api/grade_submission', methods=['POST'])
+@login_required('Formateur')
+def grade_submission():
+    data = request.json
+    try:
+        # Validate grade is number 0-20
+        grade = float(data['grade'])
+        if grade < 0 or grade > 20:
+            return jsonify({'status': 'error', 'message': 'Grade must be 0-20'})
+            
+        with SchoolDB() as db:
+            db.save_grade(data['submission_id'], grade)
+        return jsonify({'status': 'success', 'message': 'Saved!'})
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Invalid number'})
+
+@app.route('/download_report/<int:submission_id>')
+@login_required('Formateur')
+def download_report(submission_id):
+    with SchoolDB() as db:
+        file_info = db.get_submission_file(submission_id)
+        
+    if file_info and file_info['data']:
+        return send_file(
+            io.BytesIO(file_info['data']),
+            mimetype=file_info['type'] or 'application/pdf',
+            as_attachment=True, # Force download for reports
+            download_name=file_info['name']
+        )
+    return "File not found", 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
