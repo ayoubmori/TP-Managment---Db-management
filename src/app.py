@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import functools
 import io 
 import mimetypes
+import base64
 
 # 1. Secure Configuration
 load_dotenv()
@@ -442,6 +443,52 @@ def download_report(submission_id):
             download_name=file_info['name']
         )
     return "File not found", 404
+
+
+# --- IDM-PROOF FILE VIEWER (MASKING STRATEGY) ---
+@app.route('/view_subject_secure/<int:tp_id>', methods=['POST']) 
+@login_required()
+def view_subject_secure(tp_id):
+    with SchoolDB() as db:
+        file_info = db.get_tp_file_content(tp_id)
+
+    if file_info and file_info['data']:
+        # Check if data is actually there
+        if len(file_info['data']) == 0:
+            return jsonify({'error': 'File is empty'}), 404
+
+        # MASKING TRICK: 
+        # 1. Send as 'application/octet-stream' so IDM ignores it.
+        # 2. Name it '.bin' so IDM doesn't trigger on extension.
+        return send_file(
+            io.BytesIO(file_info['data']),
+            mimetype='application/octet-stream', 
+            as_attachment=False,
+            download_name='secure_content.bin' 
+        )
+    return jsonify({'error': 'File not found'}), 404
+
+
+# --- THE NUCLEAR OPTION: BASE64 JSON BYPASS ---
+@app.route('/api/get_file_base64/<int:tp_id>')
+@login_required()
+def get_file_base64(tp_id):
+    with SchoolDB() as db:
+        file_info = db.get_tp_file_content(tp_id)
+
+    if file_info and file_info['data']:
+        # 1. Encode binary data to Base64 String
+        # This makes the file look like a long text string to IDM
+        b64_data = base64.b64encode(file_info['data']).decode('utf-8')
+        
+        return jsonify({
+            'status': 'success',
+            'filename': file_info['name'],
+            'file_data': b64_data, # The PDF is hidden inside this string
+            'mime_type': 'application/pdf'
+        })
+        
+    return jsonify({'status': 'error', 'message': 'File not found'}), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

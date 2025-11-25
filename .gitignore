@@ -18,6 +18,6 @@ env/
 utils/project_contents.txt
 utils/copy_files.py
 
-cred.txt
+todo.md
 
 project_tree.md

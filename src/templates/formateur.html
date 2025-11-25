@@ -583,20 +583,41 @@
     }
 
 
-    // --- IDM BYPASS: VIEW FILE ---
+    // --- IDM BYPASS: BASE64 JSON STRATEGY ---
     function viewFile(tpId) {
+        // 1. Visual Feedback
         document.body.style.cursor = 'wait'; 
-        fetch(`/view_subject/${tpId}`)
-            .then(response => {
-                if (!response.ok) throw new Error("File not found or server error.");
-                return response.blob(); 
-            })
-            .then(blob => {
+        
+        // 2. Request JSON (IDM ignores JSON requests)
+        fetch(`/api/get_file_base64/${tpId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    throw new Error(data.message || "Server Error");
+                }
+
+                // 3. Decode Base64 string back to Binary
+                const byteCharacters = atob(data.file_data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+
+                // 4. Create PDF Blob from binary data
+                const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+                // 5. Create URL and Open
                 const url = window.URL.createObjectURL(blob);
                 window.open(url, '_blank');
+
+                // Cleanup
                 setTimeout(() => window.URL.revokeObjectURL(url), 60000);
             })
-            .catch(err => alert("Error opening file: " + err))
+            .catch(err => {
+                console.error(err);
+                alert("Error opening file: " + err.message);
+            })
             .finally(() => {
                 document.body.style.cursor = 'default';
             });
