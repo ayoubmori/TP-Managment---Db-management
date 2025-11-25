@@ -1,0 +1,208 @@
+================================================================================
+PROJECT: SYSTEME DE GESTION DE TP
+
+PROJECT OVERVIEW (NON-TECHNICAL)
+
+This project is a Distributed Management System designed to digitize the workflow of
+Practical Works (Travaux Pratiques - TPs) in an educational institution.
+
+It replaces manual paper handling and disjointed tools with a unified platform where:
+
+Administrators (Direction) manage the entire ecosystem.
+
+Teachers (Formateurs) publish assignments and grade students.
+
+Students (Etudiants) access their work and submit reports online.
+
+The system mimics the functionality of "Google Classroom" but is built as a private,
+secure, and self-hosted solution where all data (including files) is stored in a
+central SQL Server database, ensuring data sovereignty and ease of backup.
+
+ACTORS & ROLES
+
+A. Direction (Admin)
+
+The "Super User" of the system.
+
+Responsibilities:
+
+Creates and manages user accounts (Formateurs, Etudiants).
+
+Defines the academic structure (Filieres, Groups, Modules).
+
+Assigns Students to Groups and Formateurs to Groups.
+
+Monitors the overall system health.
+
+B. Formateur (Teacher)
+
+The operational manager of a class.
+
+Responsibilities:
+
+Publishes TP Assignments (PDF subjects).
+
+Sets deadlines and instructions.
+
+Marks student attendance (Presence/Absence).
+
+Reviews student submissions.
+
+C. Etudiant (Student)
+
+The end-user.
+
+Responsibilities:
+
+Logs in to view assigned TPs.
+
+Views/Downloads the TP subject (PDF) directly in the browser.
+
+Submits their work (Report) via a Google Drive link or file upload.
+
+Checks deadlines to ensure timely submission.
+
+CORE FUNCTIONALITIES
+
+Authentication & Security
+
+Secure Login for all three roles using Email/Password.
+
+Role-Based Access Control (RBAC) ensures students cannot access admin panels.
+
+Session management to keep users logged in securely.
+
+User Management (Admin Panel)
+
+Dashboard to view all users in a list.
+
+"Create Account" form with dynamic fields based on role (e.g., CNE for Students, Matricule for Teachers).
+
+"Edit User" modal to update details without deleting the account.
+
+"Delete User" capability.
+
+Smart Grouping: Dropdowns are organized by Filiere (e.g., ADIA - Group 1) to prevent confusion.
+
+Course Management (The "Classroom" Feature)
+
+Publish TP: Formateurs upload a PDF subject from their computer.
+
+Database Storage: The PDF file is converted to Binary Data (BLOB) and stored securely inside SQL Server.
+
+Streaming View: Students click "View Subject" and the PDF opens instantly in their browser (no download required).
+
+Attendance Tracking
+
+Digital presence sheet.
+
+Formateurs see a list of students for their specific session.
+
+One-click "Present" or "Absent" marking.
+
+Submission System
+
+Hybrid Approach:
+
+Teachers upload the Question Paper (File stored in DB).
+
+Students submit the Answer Paper (Google Drive Link stored in DB).
+
+This keeps the database size manageable while ensuring the integrity of the exam paper.
+
+TECHNICAL ARCHITECTURE
+
+A. Architecture Style
+
+Distributed System / Client-Server Architecture.
+
+The "Server" is a centralized Flask Application connected to SQL Server.
+
+The "Clients" are web browsers accessing the system over the network.
+
+B. Tech Stack
+
+Backend: Python (Flask)
+
+Database: Microsoft SQL Server (Enterprise-grade RDBMS)
+
+Database Driver: pyodbc (ODBC Driver 17)
+
+Frontend: HTML5, CSS3 (Bootstrap 5), JavaScript (Fetch API)
+
+Protocol: HTTP/1.1
+
+C. Database Schema (SQL Server)
+The database is normalized to 3NF (Third Normal Form).
+
+[Master Tables]
+
+Filiere: (ID, Name) -> e.g., ADIA, IL
+
+Groupe: (ID, Name, FiliereID) -> e.g., Grp 1 linked to ADIA
+
+Module: (ID, Name) -> e.g., Python, Java
+
+[User Tables]
+
+Utilisateur: (ID, Name, Email, Password, Role) -> Base table for all actors.
+
+Formateur: (ID, Matricule, Specialite) -> Linked 1-to-1 with Utilisateur.
+
+Etudiant: (ID, CNE, GroupeID) -> Linked 1-to-1 with Utilisateur.
+
+[Operational Tables]
+
+Seance: Links a Formateur, a Group, and a Module to a specific Time/Date.
+
+Presence: Tracks status (Present/Absent) for a Student in a Seance.
+
+TP: Stores the Assignment details. Crucially contains:
+
+FichierData: VARBINARY(MAX) -> The actual PDF file bytes.
+
+FichierType: NVARCHAR -> Mime type (application/pdf).
+
+Soumission: Stores the Student's work (Link to Drive).
+
+KEY WORKFLOWS
+
+Workflow 1: The "Publishing" Cycle
+
+Formateur logs in and goes to dashboard.
+
+Fills in Title, Description, Deadline.
+
+Clicks "Upload Subject" and selects a PDF from local disk.
+
+Frontend sends form data (Multipart) to Flask Server.
+
+Server reads file into RAM (Bytes).
+
+Server opens connection to SQL Server.
+
+Server inserts Binary Data into TP table.
+
+Workflow 2: The "Viewing" Cycle
+
+Student logs in and sees list of TPs.
+
+Clicks "View Subject".
+
+Browser requests /view_subject/<id>.
+
+Server queries SQL Server for the BLOB data.
+
+Server streams bytes back to browser with Content-Type: application/pdf.
+
+PDF opens in a new tab.
+
+FUTURE IMPROVEMENTS (ROADMAP)
+
+Password Hashing: Integrate bcrypt to encrypt passwords in the DB.
+
+HTTPS: Enable SSL for secure data transmission over the network.
+
+Email Notifications: Send automated emails when a new TP is published.
+
+Grading System: Add a column to Soumission for the Formateur to input a grade (0-20).

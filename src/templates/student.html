@@ -5,54 +5,239 @@
     <title>Student Portal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Custom Upload Zone Style (Green for Students) */
+        .upload-zone { 
+            border: 2px dashed #198754; 
+            padding: 30px; 
+            border-radius: 10px; 
+            background: #f8fbff; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
+        .upload-zone:hover { 
+            background: #e9f7ef; 
+            border-color: #157347;
+        }
+    </style>
 </head>
 <body class="bg-light">
 
 <nav class="navbar navbar-dark bg-success mb-4">
-    <div class="container"><span class="navbar-brand">🎓 Student Portal (Jane Doe)</span><a href="/logout" class="btn btn-sm btn-light">Logout</a></div>
+    <div class="container">
+        <span class="navbar-brand">
+            <i class="fas fa-user-graduate me-2"></i>Student Portal
+        </span>
+        <a href="/logout" class="btn btn-sm btn-light">Logout</a>
+    </div>
 </nav>
 
 <div class="container">
-    <h4 class="mb-3">My Assignments</h4>
-    <div class="row">
+    
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="text-success m-0">📚 My Assignments</h4>
+        <div class="btn-group">
+            <button class="btn btn-outline-success active" onclick="setView('grid')" id="btnGrid">
+                <i class="fas fa-th-large me-1"></i> Grid
+            </button>
+            <button class="btn btn-outline-success" onclick="setView('list')" id="btnList">
+                <i class="fas fa-list me-1"></i> List
+            </button>
+        </div>
+    </div>
+    
+    <div class="row" id="gridView">
         {% for tp in tps %}
         <div class="col-md-4 mb-4">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm border-0">
                 <div class="card-body">
-                    <h5 class="card-title">{{ tp.titre }}</h5>
-                    <h6 class="card-subtitle mb-2 text-muted">{{ tp.module }}</h6>
-                    <p class="card-text">{{ tp.description }}</p>
-                    <p class="text-danger small"><i class="far fa-clock"></i> Due: {{ tp.deadline }}</p>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title text-dark fw-bold">{{ tp.titre }}</h5>
+                        <span class="badge bg-secondary">{{ tp.module }}</span>
+                    </div>
+                    
+                    <h6 class="card-subtitle mb-2 text-muted mt-1">
+                        <small>Deadline:</small> <span class="text-danger">{{ tp.deadline }}</span>
+                    </h6>
+                    
+                    <p class="card-text mt-3">{{ tp.description }}</p>
+                    
                     <hr>
+                    
                     <div class="d-grid gap-2">
-                        <!-- CHANGED: Point to new /view_subject route -->
                         <a href="/view_subject/{{ tp.id }}" target="_blank" class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-eye"></i> View Subject (PDF)
+                            <i class="fas fa-eye me-1"></i> View Subject
                         </a>
+                        
                         <button onclick="openSubmitModal({{ tp.id }})" class="btn btn-success btn-sm">
-                            <i class="fab fa-google-drive"></i> Submit Rapport
+                            <i class="fas fa-file-upload me-1"></i> Submit Rapport
                         </button>
                     </div>
                 </div>
             </div>
         </div>
         {% else %}
-        <div class="col-12"><p class="text-center text-muted">No assignments found.</p></div>
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                No assignments found for your group.
+            </div>
+        </div>
         {% endfor %}
+    </div>
+
+    <div class="card shadow-sm d-none" id="listView">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Title</th>
+                            <th>Module</th>
+                            <th>Description</th>
+                            <th>Deadline</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tp in tps %}
+                        <tr>
+                            <td class="fw-bold">{{ tp.titre }}</td>
+                            <td><span class="badge bg-secondary">{{ tp.module }}</span></td>
+                            <td><small class="text-muted">{{ tp.description[:50] }}...</small></td>
+                            <td class="text-danger">{{ tp.deadline }}</td>
+                            <td class="text-end">
+                                <a href="/view_subject/{{ tp.id }}" target="_blank" class="btn btn-sm btn-outline-primary" title="View Subject">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <button onclick="openSubmitModal({{ tp.id }})" class="btn btn-sm btn-success" title="Submit Rapport">
+                                    <i class="fas fa-file-upload"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="submitModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-paper-plane me-2"></i>Submit Your Rapport</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="submitForm">
+                    <input type="hidden" id="submitTpId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Upload PDF Report</label>
+                        
+                        <div class="upload-zone" onclick="document.getElementById('rapportFile').click()">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-success mb-2"></i>
+                            <p class="mb-0 text-muted">Click here to select your file</p>
+                            <small id="fileName" class="fw-bold text-dark d-block mt-2"></small>
+                        </div>
+                        
+                        <input type="file" id="rapportFile" class="d-none" accept=".pdf" onchange="updateFileName(this)">
+                        
+                        <div class="form-text mt-2">
+                            <i class="fas fa-info-circle"></i> Only <b>.pdf</b> files are accepted.
+                        </div>
+                    </div>
+                    
+                    <button type="button" onclick="sendRapport()" class="btn btn-success w-100 fw-bold">
+                        Confirm Submission
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- (Modal logic stays same as previous) -->
-<div class="modal fade" id="submitModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Submit Rapport</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center"><p>Select your report from Google Drive:</p><button class="btn btn-outline-success w-100 mb-2" onclick="submitFile('Rapport.pdf')"><i class="far fa-file-pdf"></i> Rapport.pdf</button></div></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
+    // --- VIEW SWITCHER LOGIC ---
+    function setView(view) {
+        if(view === 'grid') {
+            document.getElementById('gridView').classList.remove('d-none');
+            document.getElementById('listView').classList.add('d-none');
+            document.getElementById('btnGrid').classList.add('active');
+            document.getElementById('btnList').classList.remove('active');
+        } else {
+            document.getElementById('gridView').classList.add('d-none');
+            document.getElementById('listView').classList.remove('d-none');
+            document.getElementById('btnGrid').classList.remove('active');
+            document.getElementById('btnList').classList.add('active');
+        }
+    }
+
+    // --- MODAL LOGIC ---
     const submitModal = new bootstrap.Modal(document.getElementById('submitModal'));
-    let currentTpId = null;
-    function openSubmitModal(tpId) { currentTpId = tpId; submitModal.show(); }
-    function submitFile(filename) {
-        fetch('/submit_rapport', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tp_id: currentTpId, link: "https://drive.google.com/file/d/student/"+filename }) })
-        .then(r => r.json()).then(data => { alert(data.message); submitModal.hide(); });
+    
+    // 1. Open Modal & Set ID
+    function openSubmitModal(tpId) { 
+        document.getElementById('submitTpId').value = tpId;
+        document.getElementById('rapportFile').value = ""; // Clear previous file
+        document.getElementById('fileName').innerText = ""; // Clear name display
+        submitModal.show();
+    }
+
+    // 2. Helper to show selected filename
+    function updateFileName(input) {
+        if(input.files && input.files[0]) {
+            document.getElementById('fileName').innerText = input.files[0].name;
+        }
+    }
+
+    // 3. Send File to Server (AJAX)
+    function sendRapport() {
+        const tpId = document.getElementById('submitTpId').value;
+        const fileInput = document.getElementById('rapportFile');
+        
+        // Validation
+        if (fileInput.files.length === 0) {
+            alert("⚠️ Please select a PDF file before submitting.");
+            return;
+        }
+
+        // Prepare Data
+        const formData = new FormData();
+        formData.append('tp_id', tpId);
+        formData.append('file', fileInput.files[0]);
+
+        // Send Request
+        const btn = document.querySelector('#submitForm button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+        btn.disabled = true;
+
+        fetch('/submit_rapport', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            alert(data.message);
+            if(data.status === 'success') {
+                submitModal.hide();
+                // Optional: Reload to update UI status
+                // location.reload(); 
+            }
+        })
+        .catch(err => alert("Error: " + err))
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
     }
 </script>
+
 </body>
 </html>

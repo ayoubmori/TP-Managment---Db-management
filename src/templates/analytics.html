@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Presence Analytics</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
+    <div class="container">
+        <span class="navbar-brand">
+            <i class="fas fa-chart-line me-2"></i>Analytics Dashboard
+        </span>
+        <div>
+            {% if role == 'Direction' %}
+                <a href="/admin" class="btn btn-sm btn-outline-light me-2">Back to Admin</a>
+            {% else %}
+                <a href="/formateur" class="btn btn-sm btn-outline-light me-2">Back to Dashboard</a>
+            {% endif %}
+            <a href="/logout" class="btn btn-sm btn-light">Logout</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container pb-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-0 fw-bold">Attendance Insights</h4>
+            <p class="text-muted small mb-0">Real-time statistics & absence tracking</p>
+        </div>
+        
+        {% if role == 'Direction' %}
+        <div class="bg-white p-2 rounded shadow-sm border">
+            <span class="me-2 fw-bold text-muted small">FILTER PROFESSOR:</span>
+            <select id="teacherFilter" class="form-select form-select-sm d-inline-block" style="width: 200px;" onchange="fetchData()">
+                <option value="all">-- Global View (All) --</option>
+                {% for t in teachers %}
+                    <option value="{{ t.id }}">{{ t.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 border-start border-primary border-4">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase small fw-bold">Avg Attendance Rate</h6>
+                    <h2 class="mb-0 text-primary fw-bold" id="kpiRate">--%</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 border-start border-success border-4">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase small fw-bold">Sessions Conducted</h6>
+                    <h2 class="mb-0 text-success fw-bold" id="kpiSessions">--</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-bold">
+                    <i class="fas fa-history me-2"></i>Attendance Timeline
+                </div>
+                <div class="card-body">
+                    <canvas id="timelineChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-bold">
+                    <i class="fas fa-users me-2"></i>By Group Performance
+                </div>
+                <div class="card-body">
+                    <canvas id="groupChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-user-times me-2"></i>Absence Report (Top Non-Presented Students)</span>
+                    <span class="badge bg-light text-danger">High Priority</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">Student Info</th>
+                                    <th>Context (Class/Module)</th>
+                                    <th>Absence Dates</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="absentTableBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let timelineChartInstance = null;
+    let groupChartInstance = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        fetchData();
+    });
+
+    function fetchData() {
+        const teacherId = document.getElementById('teacherFilter') ? document.getElementById('teacherFilter').value : null;
+
+        fetch('/api/analytics_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ formateur_id: teacherId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            updateKPIs(data.kpis);
+            renderCharts(data.stats);
+            renderAbsences(data.absences); // Render the new table
+        })
+        .catch(err => console.error("Error loading analytics:", err));
+    }
+
+    function updateKPIs(kpis) {
+        document.getElementById('kpiRate').innerText = kpis.avg_rate + "%";
+        document.getElementById('kpiSessions').innerText = kpis.total_sessions;
+    }
+
+    function renderAbsences(absences) {
+        const tbody = document.getElementById('absentTableBody');
+        tbody.innerHTML = '';
+
+        if (!absences || absences.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted"><i class="fas fa-check-circle text-success fa-2x mb-2"></i><br>Great! No absences recorded.</td></tr>';
+            return;
+        }
+
+        absences.forEach(student => {
+            // "3 Strikes" Rule Check
+            const isCritical = student.count >= 3;
+            const rowClass = isCritical ? "table-danger" : "";
+            const badgeClass = isCritical ? "bg-danger" : "bg-warning text-dark";
+            const warningIcon = isCritical ? '<i class="fas fa-exclamation-triangle text-danger me-1" title="Excluded from Exam"></i>' : '';
+
+            // Format dates as small badges
+            let datesHtml = '';
+            student.dates.forEach(date => {
+                datesHtml += `<span class="badge bg-light text-dark border me-1 mb-1">${date}</span>`;
+            });
+
+            const row = `
+                <tr class="${rowClass}">
+                    <td class="ps-3">
+                        ${warningIcon}
+                        <span class="fw-bold">${student.name}</span>
+                        <div class="small text-muted">CNE: ${student.cne}</div>
+                    </td>
+                    <td>
+                        <div class="fw-bold small">${student.module}</div>
+                        <span class="badge bg-secondary">${student.group}</span>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap" style="max-width: 250px;">
+                            ${datesHtml}
+                        </div>
+                    </td>
+                    <td class="text-center align-middle">
+                        <span class="badge ${badgeClass} fs-6 rounded-pill" style="width:40px">${student.count}</span>
+                        ${isCritical ? '<div class="small text-danger fw-bold mt-1">EXCLUDED</div>' : ''}
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+
+    function renderCharts(stats) {
+        const labels = stats.map(s => s.date);
+        const rates = stats.map(s => s.rate);
+        const groupNames = [...new Set(stats.map(s => s.group))];
+
+        const groupRates = groupNames.map(g => {
+            const groupSessions = stats.filter(s => s.group === g);
+            const sum = groupSessions.reduce((a, b) => a + b.rate, 0);
+            return groupSessions.length ? (sum / groupSessions.length).toFixed(1) : 0;
+        });
+
+        // 1. Timeline Chart
+        const ctxTimeline = document.getElementById('timelineChart').getContext('2d');
+        if(timelineChartInstance) timelineChartInstance.destroy();
+
+        timelineChartInstance = new Chart(ctxTimeline, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Attendance Rate (%)',
+                    data: rates,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { min: 0, max: 100 } }
+            }
+        });
+
+        // 2. Group Chart
+        const ctxGroup = document.getElementById('groupChart').getContext('2d');
+        if(groupChartInstance) groupChartInstance.destroy();
+
+        groupChartInstance = new Chart(ctxGroup, {
+            type: 'bar',
+            data: {
+                labels: groupNames,
+                datasets: [{
+                    label: 'Avg Attendance %',
+                    data: groupRates,
+                    backgroundColor: ['#198754', '#ffc107', '#0dcaf0', '#d63384'],
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, max: 100 } }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

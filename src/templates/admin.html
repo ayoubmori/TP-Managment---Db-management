@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <title>Admin Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .table-responsive { max-height: 600px; overflow-y: auto; }
+        .nav-tabs .nav-link.active { font-weight: bold; border-top: 3px solid #0d6efd; }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -18,6 +24,7 @@
 </nav>
 
 <div class="container">
+    
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -29,121 +36,179 @@
         {% endif %}
     {% endwith %}
 
-    <div class="row">
-        <!-- CREATE USER -->
-        <div class="col-md-4">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white fw-bold">➕ Create Account</div>
-                <div class="card-body">
-                    <form action="/admin/create_user" method="POST">
-                        <div class="mb-2">
-                            <label>Role</label>
-                            <select name="role" class="form-select role-select" onchange="toggleFields(this, 'create')">
-                                <option value="Etudiant">Student</option>
-                                <option value="Formateur">Formateur</option>
-                                <option value="Direction">Direction</option>
-                            </select>
+    <div class="d-flex justify-content-end mb-2">
+         <a href="/analytics" class="btn btn-outline-dark">
+            <i class="fas fa-chart-line me-2"></i>📊 Global Analytics
+        </a>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
+                <i class="fas fa-users me-2"></i>User Management
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="content-tab" data-bs-toggle="tab" data-bs-target="#content" type="button">
+                <i class="fas fa-layer-group me-2"></i>Global Content (TPs)
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+        
+        <div class="tab-pane fade show active" id="users">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header bg-success text-white fw-bold">➕ Create New Account</div>
+                        <div class="card-body">
+                            <form action="/admin/create_user" method="POST">
+                                <div class="mb-3">
+                                    <label class="form-label">Role</label>
+                                    <select name="role" id="createRoleSelect" class="form-select" onchange="toggleCreateFields()">
+                                        <option value="Etudiant">Student</option>
+                                        <option value="Formateur">Formateur</option>
+                                        <option value="Direction">Direction</option>
+                                    </select>
+                                </div>
+                                <div class="row mb-2">
+                                    <div class="col"><input type="text" name="nom" class="form-control" placeholder="Last Name" required></div>
+                                    <div class="col"><input type="text" name="prenom" class="form-control" placeholder="First Name" required></div>
+                                </div>
+                                <div class="mb-2"><input type="email" name="email" class="form-control" placeholder="Email" required></div>
+                                <div class="mb-3"><input type="password" name="password" class="form-control" placeholder="Password" required></div>
+
+                                <div id="create_student_fields">
+                                    <div class="mb-2">
+                                        <label class="small text-muted">Assign Group</label>
+                                        <select name="groupe_id" class="form-select">
+                                            {% for filiere, groups in grouped_groups.items() %}
+                                            <optgroup label="{{ filiere }}">
+                                                {% for g in groups %}
+                                                <option value="{{ g.id }}">{{ g.name }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3"><input type="text" name="cne" class="form-control" placeholder="CNE"></div>
+                                </div>
+                                <div id="create_formateur_fields" style="display:none;">
+                                    <div class="mb-3"><input type="text" name="matricule" class="form-control" placeholder="Matricule"></div>
+                                </div>
+
+                                <button type="submit" class="btn btn-success w-100">Create Account</button>
+                            </form>
                         </div>
-                        <div class="row mb-2">
-                            <div class="col"><input type="text" name="nom" class="form-control" placeholder="Last Name" required></div>
-                            <div class="col"><input type="text" name="prenom" class="form-control" placeholder="First Name" required></div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">👥 Users List</h5>
+                            <input type="text" id="userSearch" class="form-control form-control-sm w-50" placeholder="🔍 Search..." onkeyup="filterUsers()">
                         </div>
-                        <div class="mb-2"><input type="email" name="email" class="form-control" placeholder="Email" required></div>
-                        <div class="mb-2"><input type="password" name="password" class="form-control" placeholder="Password" required></div>
-                        
-                        <!-- GROUPED DROPDOWN -->
-                        <div class="student-fields">
-                            <div class="mb-2">
-                                <label>Group (By Filiere)</label>
-                                <select name="groupe_id" class="form-select">
-                                    {% for filiere, groups in grouped_groups.items() %}
-                                    <optgroup label="{{ filiere }}">
-                                        {% for g in groups %}
-                                        <option value="{{ g.id }}">{{ g.name }}</option>
-                                        {% endfor %}
-                                    </optgroup>
+                        <div class="card-body p-0 table-responsive">
+                            <table class="table table-hover mb-0 align-middle" id="userTable">
+                                <thead class="table-light sticky-top">
+                                    <tr><th>Name</th><th>Role</th><th>Group/Classes</th><th>Actions</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for u in users %}
+                                    <tr>
+                                        <td><div class="fw-bold">{{ u.name }}</div><small class="text-muted">{{ u.email }}</small></td>
+                                        <td><span class="badge bg-{{ 'primary' if u.role == 'Etudiant' else 'warning' if u.role == 'Formateur' else 'dark' }}">{{ u.role }}</span></td>
+                                        <td>
+                                            {% if u.role == 'Etudiant' %}
+                                                <span class="badge bg-info text-dark">{{ u.student_group }}</span>
+                                            {% elif u.role == 'Formateur' %}
+                                                {% if u.teacher_groups %}
+                                                    <select class="form-select form-select-sm" style="width: auto;"><option disabled selected>View Classes</option>{% for grp in u.teacher_groups %}<option>{{ grp }}</option>{% endfor %}</select>
+                                                {% else %}<small class="text-muted">None</small>{% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="openEditModal({{ u.id }})"><i class="fas fa-edit"></i></button>
+                                            <a href="/admin/delete_user/{{ u.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete?')"><i class="fas fa-trash"></i></a>
+                                            {% if u.role == 'Formateur' %}
+                                            <button class="btn btn-sm btn-warning" onclick="openAssignModal({{ u.id }}, '{{ u.name }}')"><i class="fas fa-chalkboard-teacher"></i></button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
                                     {% endfor %}
-                                </select>
-                            </div>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="mb-3"><input type="text" name="matricule" class="form-control" placeholder="CNE / Matricule"></div>
-                        <button type="submit" class="btn btn-success w-100">Create Account</button>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- USER LIST -->
-        <div class="col-md-8">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white fw-bold">👥 Users Management</div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0 align-middle">
-                        <thead class="table-light">
-                            <tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr>
-                        </thead>
+        <div class="tab-pane fade" id="content">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="m-0">📢 All Published TPs</h5>
+                <div class="d-flex gap-2">
+                    <input type="text" id="contentSearch" class="form-control form-control-sm" placeholder="Filter..." onkeyup="filterContent()">
+                    <div class="btn-group">
+                        <button class="btn btn-outline-dark active" onclick="setAdminView('table')" id="btnAdmTable"><i class="fas fa-table"></i></button>
+                        <button class="btn btn-outline-dark" onclick="setAdminView('grid')" id="btnAdmGrid"><i class="fas fa-th"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adminTableContent" class="card shadow-sm">
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-striped mb-0" id="contentTable">
+                        <thead class="table-dark"><tr><th>Teacher</th><th>Title</th><th>Group</th><th>Module</th><th>Deadline</th><th>Action</th></tr></thead>
                         <tbody>
-                            {% for u in users %}
+                            {% for tp in all_tps %}
                             <tr>
-                                <td>{{ u.name }}</td>
-                                <td>{{ u.email }}</td>
-                                <td><span class="badge bg-{{ 'primary' if u.role == 'Etudiant' else 'warning' if u.role == 'Formateur' else 'dark' }}">{{ u.role }}</span></td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="openEditModal({{ u.id }})"><i class="fas fa-edit"></i></button>
-                                    <a href="/admin/delete_user/{{ u.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this user?')"><i class="fas fa-trash"></i></a>
-                                </td>
+                                <td>{{ tp.teacher }}</td><td>{{ tp.titre }}</td><td><span class="badge bg-info text-dark">{{ tp.group }}</span></td>
+                                <td>{{ tp.module }}</td><td class="text-danger">{{ tp.deadline }}</td>
+                                <td><a href="/view_subject/{{ tp.id }}" target="_blank" class="btn btn-sm btn-primary">View</a></td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            <div id="adminGridContent" class="row d-none">
+                {% for tp in all_tps %}
+                <div class="col-md-4 mb-3 content-card">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold">{{ tp.titre }}</h6>
+                            <p class="text-muted small">By: {{ tp.teacher }}</p>
+                            <span class="badge bg-info text-dark">{{ tp.group }}</span> <span class="badge bg-secondary">{{ tp.module }}</span>
+                            <hr>
+                            <a href="/view_subject/{{ tp.id }}" target="_blank" class="btn btn-sm btn-primary w-100">View Document</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </div>
 
-<!-- EDIT USER MODAL -->
 <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit User Info</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
+            <div class="modal-header"><h5 class="modal-title">Edit User</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
-                <form action="/admin/update_user" method="POST" id="editForm">
-                    <input type="hidden" name="user_id" id="edit_id">
-                    <input type="hidden" name="role" id="edit_role">
-                    
-                    <div class="row mb-3">
-                        <div class="col"><label>Last Name</label><input type="text" name="nom" id="edit_nom" class="form-control" required></div>
-                        <div class="col"><label>First Name</label><input type="text" name="prenom" id="edit_prenom" class="form-control" required></div>
-                    </div>
-                    <div class="mb-3"><label>Email</label><input type="email" name="email" id="edit_email" class="form-control" required></div>
-                    <div class="mb-3"><label>Password</label><input type="text" name="password" id="edit_password" class="form-control" required></div>
-
-                    <!-- Student Specific -->
+                <form action="/admin/update_user" method="POST">
+                    <input type="hidden" name="user_id" id="edit_id"><input type="hidden" name="role" id="edit_role">
+                    <div class="row mb-3"><div class="col"><input type="text" name="nom" id="edit_nom" class="form-control" required></div><div class="col"><input type="text" name="prenom" id="edit_prenom" class="form-control" required></div></div>
+                    <div class="mb-3"><input type="email" name="email" id="edit_email" class="form-control" required></div>
+                    <div class="mb-3"><input type="text" name="password" class="form-control" placeholder="New Password (Optional)"></div>
                     <div id="edit_student_fields" style="display:none;">
-                        <div class="mb-3">
-                            <label>Group (By Filiere)</label>
-                            <select name="groupe_id" id="edit_groupe_id" class="form-select">
-                                {% for filiere, groups in grouped_groups.items() %}
-                                <optgroup label="{{ filiere }}">
-                                    {% for g in groups %}
-                                    <option value="{{ g.id }}">{{ g.name }}</option>
-                                    {% endfor %}
-                                </optgroup>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3"><label>CNE</label><input type="text" name="cne" id="edit_cne" class="form-control"></div>
+                        <div class="mb-3"><select name="groupe_id" id="edit_groupe_id" class="form-select">{% for filiere, groups in grouped_groups.items() %}<optgroup label="{{ filiere }}">{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+                        <div class="mb-3"><input type="text" name="cne" id="edit_cne" class="form-control"></div>
                     </div>
-
-                    <!-- Formateur Specific -->
-                    <div id="edit_formateur_fields" style="display:none;">
-                        <div class="mb-3"><label>Matricule</label><input type="text" name="matricule" id="edit_matricule" class="form-control"></div>
-                    </div>
-
+                    <div id="edit_formateur_fields" style="display:none;"><div class="mb-3"><input type="text" name="matricule" id="edit_matricule" class="form-control"></div></div>
                     <button type="submit" class="btn btn-primary w-100">Save Changes</button>
                 </form>
             </div>
@@ -151,44 +216,142 @@
     </div>
 </div>
 
+<div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning"><h5 class="modal-title">Manage Classes: <span id="assignTeacherName"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div id="assignMsg" style="display:none;" class="alert py-2"></div>
+                <div class="row">
+                    <div class="col-md-6 border-end">
+                        <h6 class="text-muted">Current Assignments</h6>
+                        <div class="table-responsive border rounded" style="max-height: 200px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0" id="currentAssignTable"></table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-success">➕ Add New Class</h6>
+                        <form id="ajaxAssignForm">
+                            <input type="hidden" name="formateur_id" id="assign_formateur_id">
+                            <div class="mb-2"><select name="groupe_id" class="form-select" required><option value="">-- Select Group --</option>{% for filiere, groups in grouped_groups.items() %}<optgroup label="{{ filiere }}">{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+                            <div class="mb-3"><select name="module_id" class="form-select" required><option value="">-- Select Module --</option>{% for m in modules %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select></div>
+                            <button type="button" onclick="submitAssignment()" class="btn btn-dark w-100">Add Assignment</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    function filterUsers() {
+        let input = document.getElementById("userSearch").value.toUpperCase();
+        let rows = document.getElementById("userTable").getElementsByTagName("tr");
+        for (let i = 1; i < rows.length; i++) {
+            let text = rows[i].textContent || rows[i].innerText;
+            rows[i].style.display = text.toUpperCase().indexOf(input) > -1 ? "" : "none";
+        }
+    }
+    
+    function filterContent() {
+        let input = document.getElementById("contentSearch").value.toUpperCase();
+        let rows = document.getElementById("contentTable").getElementsByTagName("tr");
+        for (let i = 1; i < rows.length; i++) {
+            let text = rows[i].textContent;
+            rows[i].style.display = text.toUpperCase().indexOf(input) > -1 ? "" : "none";
+        }
+        let cards = document.getElementsByClassName("content-card");
+        for (let j = 0; j < cards.length; j++) {
+            let text = cards[j].textContent;
+            cards[j].style.display = text.toUpperCase().indexOf(input) > -1 ? "" : "none";
+        }
+    }
+
+    function setAdminView(type) {
+        if(type === 'grid') {
+            document.getElementById('adminTableContent').classList.add('d-none');
+            document.getElementById('adminGridContent').classList.remove('d-none');
+            document.getElementById('btnAdmGrid').classList.add('active');
+            document.getElementById('btnAdmTable').classList.remove('active');
+        } else {
+            document.getElementById('adminTableContent').classList.remove('d-none');
+            document.getElementById('adminGridContent').classList.add('d-none');
+            document.getElementById('btnAdmGrid').classList.remove('active');
+            document.getElementById('btnAdmTable').classList.add('active');
+        }
+    }
+
+    function toggleCreateFields() {
+        const role = document.getElementById('createRoleSelect').value;
+        document.getElementById('create_student_fields').style.display = (role === 'Etudiant') ? 'block' : 'none';
+        document.getElementById('create_formateur_fields').style.display = (role === 'Formateur') ? 'block' : 'none';
+    }
+
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
-
-    function toggleFields(select, mode) {
-        const val = select.value;
-        const container = (mode === 'create') ? document.querySelector('.student-fields') : null;
-        if(container) container.style.display = (val === 'Etudiant') ? 'block' : 'none';
-    }
-
     function openEditModal(userId) {
-        fetch(`/admin/get_user/${userId}`)
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('edit_id').value = data.id;
-                document.getElementById('edit_role').value = data.role;
-                document.getElementById('edit_nom').value = data.nom;
-                document.getElementById('edit_prenom').value = data.prenom;
-                document.getElementById('edit_email').value = data.email;
-                document.getElementById('edit_password').value = data.password;
+        fetch(`/admin/get_user/${userId}`).then(res => res.json()).then(data => {
+            document.getElementById('edit_id').value = data.id;
+            document.getElementById('edit_role').value = data.role;
+            document.getElementById('edit_nom').value = data.nom;
+            document.getElementById('edit_prenom').value = data.prenom;
+            document.getElementById('edit_email').value = data.email;
+            
+            document.getElementById('edit_student_fields').style.display = 'none';
+            document.getElementById('edit_formateur_fields').style.display = 'none';
 
-                const studentDiv = document.getElementById('edit_student_fields');
-                const formateurDiv = document.getElementById('edit_formateur_fields');
-                
-                studentDiv.style.display = 'none';
-                formateurDiv.style.display = 'none';
-
-                if (data.role === 'Etudiant') {
-                    studentDiv.style.display = 'block';
-                    document.getElementById('edit_cne').value = data.cne || '';
-                    document.getElementById('edit_groupe_id').value = data.groupe_id;
-                } else if (data.role === 'Formateur') {
-                    formateurDiv.style.display = 'block';
-                    document.getElementById('edit_matricule').value = data.matricule || '';
-                }
-                editModal.show();
-            });
+            if(data.role === 'Etudiant') {
+                document.getElementById('edit_student_fields').style.display = 'block';
+                document.getElementById('edit_cne').value = data.cne || '';
+                document.getElementById('edit_groupe_id').value = data.groupe_id;
+            } else if (data.role === 'Formateur') {
+                document.getElementById('edit_formateur_fields').style.display = 'block';
+                document.getElementById('edit_matricule').value = data.matricule || '';
+            }
+            editModal.show();
+        });
     }
+
+    const assignModal = new bootstrap.Modal(document.getElementById('assignModal'));
+    function openAssignModal(id, name) {
+        document.getElementById('assign_formateur_id').value = id;
+        document.getElementById('assignTeacherName').innerText = name;
+        document.getElementById('assignMsg').style.display = 'none';
+        loadCurrentAssignments(id);
+        assignModal.show();
+    }
+
+    function loadCurrentAssignments(id) {
+        fetch(`/admin/get_assignments/${id}`).then(r => r.json()).then(data => {
+            let html = "";
+            data.forEach(item => {
+                html += `<tr><td class="align-middle">${item.group}<br><small class="text-muted">${item.module}</small></td><td class="text-end"><button onclick="deleteAssign(${item.id})" class="btn btn-sm btn-outline-danger"><i class="fas fa-times"></i></button></td></tr>`;
+            });
+            document.getElementById('currentAssignTable').innerHTML = html || "<tr><td colspan='2' class='text-center text-muted'>No classes assigned.</td></tr>";
+        });
+    }
+
+    function submitAssignment() {
+        const form = document.getElementById('ajaxAssignForm');
+        const formData = new FormData(form);
+        fetch('/admin/assign_module', { method: 'POST', body: formData }).then(r => r.json()).then(data => {
+            const msgBox = document.getElementById('assignMsg');
+            msgBox.style.display = 'block';
+            msgBox.innerText = data.message;
+            msgBox.className = data.status === 'success' ? 'alert alert-success py-2' : 'alert alert-danger py-2';
+            if(data.status === 'success') loadCurrentAssignments(document.getElementById('assign_formateur_id').value);
+        });
+    }
+    
+    function deleteAssign(assignId) {
+        if(!confirm("Remove this class?")) return;
+        fetch(`/admin/delete_assignment/${assignId}`, { method: 'POST' }).then(r => r.json()).then(data => {
+            loadCurrentAssignments(document.getElementById('assign_formateur_id').value);
+        });
+    }
+
+    toggleCreateFields();
 </script>
 </body>
 </html>

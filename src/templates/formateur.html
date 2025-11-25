@@ -3,56 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <title>Formateur Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .upload-zone { border: 2px dashed #0d6efd; padding: 30px; border-radius: 10px; background: #f8fbff; text-align: center; cursor: pointer; transition: 0.2s; }
-        .upload-zone:hover { background: #e2eefd; }
+        /* Upload Zone */
+        .upload-zone { 
+            border: 2px dashed #0d6efd; 
+            padding: 20px; 
+            border-radius: 10px; 
+            background: #f8fbff; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
+        .upload-zone:hover { background: #e2eefd; border-color: #0b5ed7; }
+        
+        /* Presence Table Height */
+        .presence-scroll-area {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+        
+        /* Presence Buttons */
+        .pres-btn { width: 45px; font-weight: bold; }
+
+        /* Card Hover */
+        .tp-card { transition: transform 0.2s; }
+        .tp-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="bg-light">
 
-<nav class="navbar navbar-dark bg-primary mb-4">
-    <div class="container"><span class="navbar-brand">👨‍🏫 Formateur Dashboard</span><a href="/logout" class="btn btn-sm btn-light">Logout</a></div>
+<nav class="navbar navbar-dark bg-primary mb-4 shadow-sm">
+    <div class="container">
+        <span class="navbar-brand">
+            <i class="fas fa-chalkboard-teacher me-2"></i>Formateur Dashboard
+        </span>
+        <div class="d-flex align-items-center">
+            <span class="text-white me-3">Welcome</span>
+            <a href="/logout" class="btn btn-sm btn-light fw-bold"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+        </div>
+    </div>
 </nav>
 
-<div class="container">
-    <div class="row">
-        <!-- PRESENCE -->
-        <div class="col-md-6">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white"><h5>📋 Mark Presence (Seance #{{ seance_id }})</h5></div>
+<div class="container pb-5">
+
+    <div class="d-flex justify-content-end mb-3">
+        <a href="/analytics" class="btn btn-outline-primary shadow-sm">
+            <i class="fas fa-chart-pie me-2"></i>View Analytics
+        </a>
+    </div>
+    
+    <div class="row g-4 mb-5">
+        
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-bottom-0 pt-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-primary fw-bold"><i class="fas fa-clipboard-check me-2"></i>Mark Presence</h5>
+                    <span class="badge bg-secondary" id="sessionStatus">Select Session</span>
+                </div>
                 <div class="card-body">
-                    <table class="table"><thead><tr><th>Name</th><th>Action</th></tr></thead>
-                    <tbody>{% for s in students %}<tr><td>{{ s.name }}</td><td><button class="btn btn-sm btn-outline-success">P</button></td></tr>{% endfor %}</tbody></table>
+                    
+                    <form id="presenceSelector" class="mb-3 pb-3 border-bottom">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-12 mb-2">
+                                <label class="small text-muted fw-bold">CLASS & MODULE</label>
+                                <select id="presClassSelect" class="form-select">
+                                    <option value="">-- Select Class --</option>
+                                    {% for item in assignments %}
+                                    <option value="{{ item.group_id }}-{{ item.module_id }}">{{ item.group_name }} - {{ item.module_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="small text-muted fw-bold">DATE</label>
+                                <input type="date" id="presDate" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" onclick="loadStudents()" class="btn btn-primary w-100">
+                                    <i class="fas fa-sync-alt me-1"></i> Load
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div id="presenceListArea" style="display:none;">
+                        <input type="hidden" id="currentSeanceId">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted fw-bold">STUDENTS</small>
+                            <button class="btn btn-sm btn-outline-success py-0" onclick="markAll('Present')">All Present</button>
+                        </div>
+                        
+                        <div class="presence-scroll-area mb-3">
+                            <table class="table table-hover mb-0 align-middle" id="presenceTable">
+                                <thead class="table-light sticky-top">
+                                    <tr><th class="ps-3">Student Name</th><th class="text-center">Status</th></tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+
+                        <button onclick="saveAttendance()" class="btn btn-success w-100 fw-bold py-2 shadow-sm">
+                            <i class="fas fa-save me-2"></i> Save Attendance
+                        </button>
+                    </div>
+                    
+                    <div id="loadingMsg" class="text-center py-5 text-muted" style="display:none;">
+                        <div class="spinner-border text-primary mb-2" role="status"></div>
+                        <p>Loading session data...</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- PUBLISH TP (REAL UPLOAD) -->
-        <div class="col-md-6">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white"><h5>📤 Publish New TP</h5></div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-bottom-0 pt-3">
+                    <h5 class="mb-0 text-primary fw-bold"><i class="fas fa-bullhorn me-2"></i>Publish Content</h5>
+                    
+                    <ul class="nav nav-tabs card-header-tabs mt-3" id="publishTabs" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" id="tab-tp" data-bs-toggle="tab" data-bs-target="#content-tp" type="button">
+                                <i class="fas fa-file-pdf me-1"></i> TP (File)
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" id="tab-annonce" data-bs-toggle="tab" data-bs-target="#content-annonce" type="button">
+                                <i class="fas fa-comment-alt me-1"></i> Announcement
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                
                 <div class="card-body">
-                    <form id="tpForm">
-                        <div class="mb-3"><label>Title</label><input type="text" id="tpTitle" class="form-control" required></div>
-                        <div class="mb-3"><label>Description</label><textarea id="tpDesc" class="form-control" rows="2"></textarea></div>
-                        <div class="mb-3"><label>Deadline</label><input type="datetime-local" id="tpDeadline" class="form-control" required></div>
+                    
+                    <div class="mb-3 bg-light p-2 rounded border">
+                        <label class="small text-muted fw-bold mb-1">TARGET CLASS</label>
+                        <select id="assignmentSelect" class="form-select" onchange="updateHiddenFields()">
+                            <option value="">-- Choose Target Class --</option>
+                            {% for item in assignments %}
+                                <option value="{{ item.group_id }}-{{ item.module_id }}">
+                                    {{ item.group_name }} - {{ item.module_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" id="hiddenGroup">
+                        <input type="hidden" id="hiddenModule">
+                    </div>
+
+                    <div class="tab-content">
                         
-                        <!-- CLEAN UPLOAD ZONE -->
-                        <div class="mb-3">
-                            <label class="form-label">Upload Subject (PDF)</label>
-                            <div class="upload-zone" onclick="document.getElementById('tpFile').click()">
-                                <i class="fas fa-cloud-upload-alt fa-2x text-primary mb-2"></i>
-                                <p class="mb-0 text-muted">Click to select PDF from your computer</p>
-                                <small id="fileName" class="fw-bold text-dark"></small>
-                            </div>
-                            <input type="file" id="tpFile" class="d-none" accept=".pdf" onchange="document.getElementById('fileName').innerText = this.files[0].name">
+                        <div class="tab-pane fade show active" id="content-tp">
+                            <form id="tpForm">
+                                <div class="mb-2"><input type="text" id="tpTitle" class="form-control" placeholder="TP Title" required></div>
+                                <div class="mb-2"><textarea id="tpDesc" class="form-control" rows="2" placeholder="Instructions..."></textarea></div>
+                                <div class="mb-3">
+                                    <label class="small text-muted">Deadline</label>
+                                    <input type="datetime-local" id="tpDeadline" class="form-control">
+                                </div>
+                                <div class="mb-3">
+                                    <div class="upload-zone py-3" onclick="document.getElementById('tpFile').click()">
+                                        <i class="fas fa-file-pdf fa-lg text-danger mb-1"></i>
+                                        <p class="mb-0 small text-muted">Select PDF</p>
+                                        <small id="tpFileName" class="fw-bold text-dark"></small>
+                                    </div>
+                                    <input type="file" id="tpFile" class="d-none" accept=".pdf" onchange="document.getElementById('tpFileName').innerText = this.files[0].name">
+                                </div>
+                                <button type="button" onclick="submitTP()" class="btn btn-primary w-100 fw-bold">Publish TP</button>
+                            </form>
                         </div>
 
-                        <hr>
-                        <button type="button" onclick="submitTP()" class="btn btn-success w-100">Publish Assignment</button>
-                    </form>
+                        <div class="tab-pane fade" id="content-annonce">
+                            <form id="annForm">
+                                <div class="mb-2"><input type="text" id="annTitle" class="form-control" placeholder="Subject (e.g. Exam Info)" required></div>
+                                <div class="mb-3"><textarea id="annDesc" class="form-control" rows="4" placeholder="Write your message here..." required></textarea></div>
+                                <div class="mb-3">
+                                    <label class="small text-muted">Optional Image</label>
+                                    <input type="file" id="annImage" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                                <button type="button" onclick="submitAnnonce()" class="btn btn-dark w-100 fw-bold">Post Announcement</button>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-history me-2"></i>Published History</h5>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-dark btn-sm active" onclick="setView('list')" id="btnList"><i class="fas fa-list"></i> List</button>
+                        <button class="btn btn-outline-dark btn-sm" onclick="setView('grid')" id="btnGrid"><i class="fas fa-th-large"></i> Grid</button>
+                    </div>
+                </div>
+                
+                <div class="card-body p-0">
+                    <div id="listView" class="table-responsive">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">Title</th>
+                                    <th>Target</th>
+                                    <th>Date</th>
+                                    <th class="text-end pe-4">Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if history %}
+                                    {% for item in history %}
+                                    <tr>
+                                        <td class="ps-4 fw-bold">{{ item.title }}</td>
+                                        <td>
+                                            <span class="badge bg-info text-dark">{{ item.group }}</span>
+                                            <small class="text-muted ms-1">{{ item.module }}</small>
+                                        </td>
+                                        <td class="small text-muted">{{ item.date }}</td>
+                                        <td class="text-end pe-4">
+                                            {% if item.type == 'TP' %}
+                                                <span class="badge bg-primary">TP File</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">News</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr><td colspan="4" class="text-center py-5 text-muted">No activity yet.</td></tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="gridView" class="p-3 d-none">
+                        <div class="row g-3">
+                            {% if history %}
+                                {% for item in history %}
+                                <div class="col-md-4">
+                                    <div class="card h-100 tp-card border">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h6 class="fw-bold mb-0 text-truncate">{{ item.title }}</h6>
+                                                {% if item.type == 'TP' %}
+                                                    <span class="badge bg-primary">TP</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning text-dark">News</span>
+                                                {% endif %}
+                                            </div>
+                                            <p class="mb-1"><span class="badge bg-secondary">{{ item.module }}</span></p>
+                                            <p class="mb-2"><span class="badge bg-info text-dark">{{ item.group }}</span></p>
+                                            <hr class="my-2">
+                                            <small class="text-muted"><i class="far fa-clock me-1"></i> {{ item.date }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="col-12 text-center py-5 text-muted">No activity yet.</div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -61,14 +278,45 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // VIEW SWITCHER
+    function setView(view) {
+        if(view === 'grid') {
+            document.getElementById('gridView').classList.remove('d-none');
+            document.getElementById('listView').classList.add('d-none');
+            document.getElementById('btnGrid').classList.add('active');
+            document.getElementById('btnList').classList.remove('active');
+        } else {
+            document.getElementById('gridView').classList.add('d-none');
+            document.getElementById('listView').classList.remove('d-none');
+            document.getElementById('btnGrid').classList.remove('active');
+            document.getElementById('btnList').classList.add('active');
+        }
+    }
+
+    // SHARED: UPDATE HIDDEN FIELDS
+    function updateHiddenFields() {
+        const val = document.getElementById('assignmentSelect').value;
+        if(val) {
+            const parts = val.split('-');
+            document.getElementById('hiddenGroup').value = parts[0];
+            document.getElementById('hiddenModule').value = parts[1];
+        } else {
+            document.getElementById('hiddenGroup').value = "";
+            document.getElementById('hiddenModule').value = "";
+        }
+    }
+
+    // SUBMIT TP
     function submitTP() {
         const title = document.getElementById('tpTitle').value;
         const desc = document.getElementById('tpDesc').value;
         const deadline = document.getElementById('tpDeadline').value;
         const fileInput = document.getElementById('tpFile');
+        const groupId = document.getElementById('hiddenGroup').value;
+        const moduleId = document.getElementById('hiddenModule').value;
 
-        if(!title || !deadline || fileInput.files.length === 0) {
-            alert("Please fill all fields and select a file.");
+        if(!title || !deadline || fileInput.files.length === 0 || !groupId) {
+            alert("⚠️ Please fill Title, Deadline, Group and select a File.");
             return;
         }
 
@@ -77,18 +325,158 @@
         formData.append('description', desc);
         formData.append('deadline', deadline);
         formData.append('file', fileInput.files[0]);
+        formData.append('groupe_id', groupId);
+        formData.append('module_id', moduleId);
 
-        // Send to Server
-        fetch('/publish_tp', {
-            method: 'POST',
-            body: formData
-        })
+        const btn = document.querySelector('button[onclick="submitTP()"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'Publishing...';
+        btn.disabled = true;
+
+        fetch('/publish_tp', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(data => {
             alert(data.message);
             if(data.status === 'success') location.reload();
+        })
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+    }
+
+    // SUBMIT ANNOUNCEMENT
+    function submitAnnonce() {
+        const title = document.getElementById('annTitle').value;
+        const content = document.getElementById('annDesc').value;
+        const imgInput = document.getElementById('annImage');
+        const groupId = document.getElementById('hiddenGroup').value;
+        const moduleId = document.getElementById('hiddenModule').value;
+
+        if(!title || !content || !groupId) {
+            alert("⚠️ Please select a Class and fill Title/Content.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('titre', title);
+        formData.append('contenu', content);
+        formData.append('groupe_id', groupId);
+        formData.append('module_id', moduleId);
+        if(imgInput.files.length > 0) {
+            formData.append('image', imgInput.files[0]);
+        }
+
+        const btn = document.querySelector('button[onclick="submitAnnonce()"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'Posting...';
+        btn.disabled = true;
+
+        fetch('/publish_annonce', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            alert(data.message);
+            if(data.status === 'success') location.reload();
+        })
+        .finally(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+    }
+
+    // PRESENCE LOGIC
+    document.getElementById('presDate').valueAsDate = new Date();
+
+    function loadStudents() {
+        const val = document.getElementById('presClassSelect').value;
+        const date = document.getElementById('presDate').value;
+        if(!val || !date) return alert("Select Class and Date");
+        const [groupId, moduleId] = val.split('-');
+
+        document.getElementById('presenceListArea').style.display = 'none';
+        document.getElementById('loadingMsg').style.display = 'block';
+
+        const formData = new FormData();
+        formData.append('groupe_id', groupId);
+        formData.append('module_id', moduleId);
+        formData.append('date', date);
+
+        fetch('/formateur/get_session_students', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('loadingMsg').style.display = 'none';
+            document.getElementById('presenceListArea').style.display = 'block';
+            document.getElementById('currentSeanceId').value = data.seance_id;
+            document.getElementById('sessionStatus').innerText = `Session #${data.seance_id}`;
+            document.getElementById('sessionStatus').className = 'badge bg-success';
+            
+            const tbody = document.querySelector('#presenceTable tbody');
+            tbody.innerHTML = '';
+            
+            if(data.students.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No students found.</td></tr>';
+                return;
+            }
+
+            data.students.forEach(s => {
+                const isP = s.status === 'Present' ? 'btn-success' : 'btn-outline-secondary';
+                const isA = s.status === 'Absent' ? 'btn-danger' : 'btn-outline-secondary';
+                const row = `
+                <tr data-id="${s.id}">
+                    <td class="ps-3"><div class="fw-bold text-dark">${s.name}</div><small class="text-muted">CNE: ${s.cne}</small></td>
+                    <td class="text-center">
+                        <div class="btn-group btn-group-sm shadow-sm">
+                            <button onclick="setStatus(this, 'Present')" class="btn ${isP} pres-btn">P</button>
+                            <button onclick="setStatus(this, 'Absent')" class="btn ${isA} pres-btn">A</button>
+                        </div>
+                    </td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        });
+    }
+
+    function setStatus(btn, status) {
+        const parent = btn.parentElement;
+        Array.from(parent.children).forEach(b => {
+            b.classList.remove('btn-success', 'btn-danger');
+            b.classList.add('btn-outline-secondary');
+        });
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add(status === 'Present' ? 'btn-success' : 'btn-danger');
+        parent.dataset.status = status;
+    }
+
+    function markAll(status) {
+        document.querySelectorAll('.pres-btn').forEach(btn => {
+            if(btn.innerText === (status === 'Present' ? 'P' : 'A')) btn.click();
+        });
+    }
+
+    function saveAttendance() {
+        const seanceId = document.getElementById('currentSeanceId').value;
+        const presenceList = [];
+        document.querySelectorAll('#presenceTable tbody tr').forEach(tr => {
+            const studentId = tr.dataset.id;
+            const btnGroup = tr.querySelector('.btn-group');
+            const status = btnGroup.dataset.status || 'Pending';
+            if(status !== 'Pending') presenceList.push({ student_id: studentId, status: status });
+        });
+        const btn = document.querySelector('button[onclick="saveAttendance()"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'Saving...';
+        btn.disabled = true;
+        fetch('/formateur/save_presence', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ seance_id: seanceId, presence_list: presenceList })
+        }).then(r => r.json()).then(data => {
+            alert(data.message);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
         });
     }
 </script>
+
 </body>
 </html>

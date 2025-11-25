@@ -15,4 +15,7 @@ env/
 
 
 # copied content files 
-project_contents.txt
+utils/project_contents.txt
+utils/copy_files.py
+
+cred.txt
