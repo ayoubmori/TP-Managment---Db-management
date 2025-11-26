@@ -490,5 +490,27 @@ def get_file_base64(tp_id):
         
     return jsonify({'status': 'error', 'message': 'File not found'}), 404
 
+
+# --- NEW: BASE64 ROUTE FOR STUDENT SUBMISSIONS (GRADING) ---
+@app.route('/api/get_submission_base64/<int:submission_id>')
+@login_required('Formateur')
+def get_submission_base64(submission_id):
+    with SchoolDB() as db:
+        # Reuse the existing DB method to get file bytes
+        file_info = db.get_submission_file(submission_id)
+
+    if file_info and file_info['data']:
+        # Encode to Base64 to bypass IDM
+        b64_data = base64.b64encode(file_info['data']).decode('utf-8')
+        
+        return jsonify({
+            'status': 'success',
+            'filename': file_info['name'],
+            'file_data': b64_data,
+            'mime_type': file_info['type'] or 'application/pdf'
+        })
+        
+    return jsonify({'status': 'error', 'message': 'File not found'}), 404
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
